@@ -33,13 +33,16 @@ def get_scanimage_version_and_header(hdr):
 
 class TIFFReader:
     def __init__(self, wildcard):
-        self._files = sorted(map(os.path.abspath, glob(wildcard)), key=lambda x: x.split('/')[-1])
+        if isinstance(wildcard, list):
+            self._files = sorted(map(os.path.abspath, wildcard), key=lambda x: x.split('/')[-1])
+        else:
+            self._files = sorted(map(os.path.abspath, glob(wildcard)), key=lambda x: x.split('/')[-1])
         self._stacks = [TiffFile(file, fastij=True) for file in self._files]
         self._n = [len(s.pages) for s in self._stacks]
         self._ntiffs = sum(self._n)
         self.load_header()
         self._i2j = np.vstack([np.c_[i * np.ones(nn), np.arange(nn)] for i, nn in enumerate(self._n)]).astype(int)
-        self._idx = np.reshape(np.arange(self._ntiffs, dtype=int), (self.nchannels, self.nslices, self.nframes))
+        self._idx = np.reshape(np.arange(self._ntiffs, dtype=int), (self.nframes, self.nslices, self.nchannels)).transpose()
         self._img_dim = None
 
     def load_header(self):
@@ -146,7 +149,7 @@ class TIFFReader:
         idx = self._idx[vol_slice][shape]
 
         # create the return value
-        ret_val = np.empty(img_shape + idx.shape)
+        ret_val = np.empty(img_shape + idx.shape, dtype=np.int16)
 
         # from the frame indices extract the stacknumber (column 0) and the frame number within a column (column 1)
         stack_idx = self._i2j[idx.ravel()]
@@ -156,6 +159,7 @@ class TIFFReader:
 
 
         for f in np.unique(stack_idx[:,0]): # in case we extract data from more than one stack file
+            print(f)
             file_frames = stack_idx[stack_idx[:,0] == f,1] # get frames for current file
 
             # extract images and reshape back in order

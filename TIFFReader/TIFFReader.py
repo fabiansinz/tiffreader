@@ -3,6 +3,7 @@ from glob import glob
 import os
 from oct2py import Oct2Py
 import re
+import numpy as np
 from . import VersionNumberException
 
 si4 = re.compile("""^scanimage\.SI4\.(?P<attr>\w*)\s*=\s*(?P<value>.*\S)\s*$""")
@@ -33,14 +34,13 @@ def get_scanimage_version_and_header(hdr):
 class TIFFReader:
     def __init__(self, wildcard):
         self._files = sorted(map(os.path.abspath, glob(wildcard)), key=lambda x: x.split('/')[-1])
-        self._stacks = [TiffFile(file) for file in self._files]
+        self._stacks = [TiffFile(file, fastij=True) for file in self._files]
+        self._n = [len(s.pages) for s in self._stacks]
+        self._ntiffs = sum(self._n)
         self.load_header()
-        # ----------------------------------
-        # TODO: Remove this later
-        from IPython import embed
-        embed()
-        exit()
-        # ----------------------------------
+        self._i2j = np.vstack([np.c_[i * np.ones(nn), np.arange(nn)] for i, nn in enumerate(self._n)]).astype(int)
+        self._idx = np.reshape(np.arange(self._ntiffs, dtype=int), (self.nchannels, self.nslices, self.nframes))
+        self._img_dim = None
 
     def load_header(self):
         first_frame = self._stacks[0].pages[0]
@@ -66,7 +66,7 @@ class TIFFReader:
     def fps(self):
         if self.scanimage_version == 4:
             if self.header['fastZactive']:
-                fps = 1/self.header['fastZPeriod']
+                fps = 1 / self.header['fastZPeriod']
             else:
                 assert self.nslices == 1
                 fps = self.header['scanFrameRate']
@@ -76,7 +76,6 @@ class TIFFReader:
             else:
                 fps = self.header['hRoiManager_scanFrameRate']
         return fps
-
 
     @property
     def slice_pitch(self):
@@ -101,27 +100,19 @@ class TIFFReader:
             n = self.header['hFastZ_numVolumes']
         return int(n)
 
-
     @property
     def nframes(self):
-        #----------------------------------
-        # TODO: Remove this later
-        from IPython import embed
-        embed()
-        # exit()
-        #----------------------------------
-
-        #return self.header[''] if self.scanimage_version == 4 else self.header['']
+        return int(self._ntiffs / self.nchannels / self.nslices)
 
     @property
     def bidirectional(self):
         return bool(self.header['scanMode'] == 'uni' if self.scanimage_version == 4
-                            else self.header['hScan2D_bidirectional'])
+                    else self.header['hScan2D_bidirectional'])
 
     @property
     def dwell_time(self):
-        return self.header['scanPixelTimeMean']*1e6 if self.scanimage_version == 4 \
-                                            else self.header['hScan2D_scanPixelTimeMean']*1e6
+        return self.header['scanPixelTimeMean'] * 1e6 if self.scanimage_version == 4 \
+            else self.header['hScan2D_scanPixelTimeMean'] * 1e6
 
     @property
     def nchannels(self):
@@ -130,25 +121,45 @@ class TIFFReader:
     @property
     def zoom(self):
         return self.header['scanZoomFactor'] if self.scanimage_version == 4 \
-                                            else self.header['hRoiManager_scanZoomFactor']
+            else self.header['hRoiManager_scanZoomFactor']
 
     @property
     def shape(self):
-        #----------------------------------
-        # TODO: Remove this later
-        from IPython import embed
-        embed()
-        # exit()
-        #----------------------------------
+        if self._img_dim is None:
+            self._img_dim = self._stacks[0].asarray([0]).shape
+        return self._img_dim + (self.nchannels, self.nslices, self.nframes)
 
-    @property
-    def frames_per_slice(self):
-        assert self.scanimage_version == 5
-        return int(self.header['hStackManager_framesPerSlice'])
+    def __getitem__(self, item):
+        for i in item:
+            if i is Ellipsis:
+                raise IndexError('Not supporting ... yet')
 
-    @property
-    def slice_per_acq(self):
-        assert self.scanimage_version == 5
-        return int(self.header['hStackManager_slicesPerAcq'])
+        # split into indices into the image and into channel, slice, frames
+        img_slice, vol_slice = item[:2], item[2:]
+        img_shape = self.shape[:2]
+
+        # create a reshaping array to ensure that the indices have the correct dimensions later
+        # this is a fancy version of np.atleast_2d
+        shape = tuple((slice(None) if isinstance(i, slice) else None for i in vol_slice))
+
+        # get frame indices and make the dimensions right
+        idx = self._idx[vol_slice][shape]
+
+        # create the return value
+        ret_val = np.empty(img_shape + idx.shape)
+
+        # from the frame indices extract the stacknumber (column 0) and the frame number within a column (column 1)
+        stack_idx = self._i2j[idx.ravel()]
+
+        # that is used with logical indexing to put the images back in place
+        file_id = stack_idx[:,0].reshape(idx.shape)
 
 
+        for f in np.unique(stack_idx[:,0]): # in case we extract data from more than one stack file
+            file_frames = stack_idx[stack_idx[:,0] == f,1] # get frames for current file
+
+            # extract images and reshape back in order
+            ret_val[...,file_id == f] = self._stacks[f].asarray(file_frames).transpose([1,2,0])
+
+        # extract image dimensions if specified
+        return ret_val[img_slice + 3*(slice(None),)]

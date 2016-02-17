@@ -31,4 +31,6 @@ fr = t[:3,:3,:,:,1494:1505] # rows, columns, channels, slices, frames
 
 `Ellipsis` (the `...` object) is not yet supported for indexing. 
 
-This reader is very similar to a [reader](https://github.com/atlab/commons/tree/master/lib/%2Bne7) for ScanImage files in Matlab written by Dimitri Yatsenko. 
+`TIFFReader` needs octave to be installed on the system since ScanImage stores the meta-information as matlab code. Requests to change that in future versions can be submitted [here](https://jira.atlassian.com/projects/CONF/issues/CONF-40799?filter=allopenissues).
+
+This reader is based on a Matlab [reader](https://github.com/atlab/commons/tree/master/lib/%2Bne7) for ScanImage files in Matlab written by Dimitri Yatsenko. 

@@ -2,13 +2,13 @@
 Python TIFF Stack Reader for ScanImage 4 and 5
 
 ### Installation
-```
+```shell
 git clone https://github.com/atlab/tiffreader.git
 pip install tiffreader/
 ```
 
 ### Usage
-```
+```python
 from tiffreader import TIFFReader
 t = TIFFReader('/home/fabee/cache/160208/m7588A_00001_00*.tif')
 print(t.nframes)

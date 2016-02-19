@@ -161,7 +161,6 @@ class TIFFReader:
 
 
         for f in np.unique(stack_idx[:,0]): # in case we extract data from more than one stack file
-            print(f)
             file_frames = stack_idx[stack_idx[:,0] == f,1] # get frames for current file
 
             # extract images and reshape back in order

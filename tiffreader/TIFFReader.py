@@ -57,8 +57,10 @@ class TIFFReader:
 
     @property
     def nslices(self):
-        return int(self.header['stackNumSlices'] if self.scanimage_version == 4 else self.header[
-            'hFastZ_numFramesPerVolume'])
+        if self.scanimage_version == 4:
+            return int(self.header['stackNumSlices'])
+        else:
+            return int(self.header['hStackManager_numSlices'])
 
     @property
     def fill_fraction(self):

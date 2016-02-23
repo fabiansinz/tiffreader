@@ -42,7 +42,8 @@ class TIFFReader:
         self._ntiffs = sum(self._n)
         self.load_header()
         self._i2j = np.vstack([np.c_[i * np.ones(nn), np.arange(nn)] for i, nn in enumerate(self._n)]).astype(int)
-        self._idx = np.reshape(np.arange(self._ntiffs, dtype=int), (self.nframes, self.nslices, self.nchannels)).transpose()
+        # self._idx = np.reshape(np.arange(self._ntiffs, dtype=int), (self.nframes, self.nslices, self.nchannels)).transpose()
+        self._idx = np.reshape(np.arange(self._ntiffs, dtype=int), (self.nslices, self.nframes, self.nchannels)).transpose([2,0,1])
         self._img_dim = None
 
     def load_header(self):
@@ -164,7 +165,11 @@ class TIFFReader:
             file_frames = stack_idx[stack_idx[:,0] == f,1] # get frames for current file
 
             # extract images and reshape back in order
-            ret_val[...,file_id == f] = self._stacks[f].asarray(file_frames).transpose([1,2,0])
+            tmp = self._stacks[f].asarray(file_frames)
+            if len(tmp.shape) == 2:
+                ret_val[...,file_id == f] = tmp[..., None]
+            else:
+                ret_val[...,file_id == f] = tmp.transpose([1,2,0])
 
         # extract image dimensions if specified
         return ret_val[img_slice + 3*(slice(None),)]

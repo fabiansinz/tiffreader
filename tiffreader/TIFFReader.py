@@ -42,8 +42,10 @@ class TIFFReader:
         self._ntiffs = sum(self._n)
         self.load_header()
         self._i2j = np.vstack([np.c_[i * np.ones(nn), np.arange(nn)] for i, nn in enumerate(self._n)]).astype(int)
-        # self._idx = np.reshape(np.arange(self._ntiffs, dtype=int), (self.nframes, self.nslices, self.nchannels)).transpose()
-        self._idx = np.reshape(np.arange(self._ntiffs, dtype=int), (self.nslices, self.nframes, self.nchannels)).transpose([2,0,1])
+        if not self.is_structural:
+            self._idx = np.reshape(np.arange(self._ntiffs, dtype=int), (self.nframes, self.nslices, self.nchannels)).transpose()
+        else:
+            self._idx = np.reshape(np.arange(self._ntiffs, dtype=int), (self.nslices, self.nframes, self.nchannels)).transpose([2,0,1])
         self._img_dim = None
 
     def load_header(self):
@@ -94,6 +96,10 @@ class TIFFReader:
             p = self.header['hStackManager_stackZStepSize']
 
         return p
+
+    @property
+    def is_structural(self):
+        return self.header['hFastZ_enable'] == 0
 
     @property
     def requested_frames(self):

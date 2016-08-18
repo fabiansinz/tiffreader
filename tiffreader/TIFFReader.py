@@ -6,28 +6,29 @@ import re
 import numpy as np
 from . import VersionNumberException
 
-si4 = re.compile("""^scanimage\.SI4\.(?P<attr>\w*)\s*=\s*(?P<value>.*\S)\s*$""")
-si5 = re.compile("""^scanimage\.SI\.(?P<attr>[\.\w]*)\s*=\s*(?P<value>.*\S)\s*$""")
+si_verions = {
+    4: re.compile("""^scanimage\.SI4\.(?P<attr>\w*)\s*=\s*(?P<value>.*\S)\s*$"""),
+    5: re.compile("""^scanimage\.SI\.(?P<attr>[\.\w]*)\s*=\s*(?P<value>.*\S)\s*$"""),
+    5.2: re.compile("""^SI\.(?P<attr>[\.\w]*)\s*=\s*(?P<value>.*\S)\s*$""")
+}
 
 
 def get_scanimage_version_and_header(hdr):
     o2p = Oct2Py()
-
-    tmp = [si4.match(s) for s in hdr if si4.match(s) is not None]
-    if len(tmp) > 0:
-        version = 4
-        hdr = {g['attr']: g['value'] for g in map(lambda x: x.groupdict(), tmp)}
+    for version, vregexp in si_verions.items():
+        tmp = [vregexp.match(s) for s in hdr if vregexp.match(s) is not None]
+        if len(tmp) > 0:
+            print('Found scan image version', version)
+            hdr = {g['attr']: g['value'] for g in map(lambda x: x.groupdict(), tmp)}
+            break
     else:
-        tmp = [si5.match(s) for s in hdr if si5.match(s) is not None]
-        version = 5
-        hdr = {g['attr']: g['value'] for g in map(lambda x: x.groupdict(), tmp)}
-    if len(hdr) == 0:
         raise VersionNumberException("Cannot find header information. Possibly wrong scanimage version")
 
     hdr_ret = {}
     for k, v in hdr.items():
         if not v[0] == "<" and not v[-1] == '>':
             hdr_ret[k.replace('.', '_')] = o2p.eval(v, verbose=False)
+
     return version, hdr_ret
 
 
@@ -43,14 +44,17 @@ class TIFFReader:
         self.load_header()
         self._i2j = np.vstack([np.c_[i * np.ones(nn), np.arange(nn)] for i, nn in enumerate(self._n)]).astype(int)
         if not self.is_structural:
-            self._idx = np.reshape(np.arange(self._ntiffs, dtype=int), (self.nframes, self.nslices, self.nchannels)).transpose()
+            self._idx = np.reshape(np.arange(self._ntiffs, dtype=int),
+                                   (self.nframes, self.nslices, self.nchannels)).transpose()
         else:
-            self._idx = np.reshape(np.arange(self._ntiffs, dtype=int), (self.nslices, self.nframes, self.nchannels)).transpose([2,0,1])
+            self._idx = np.reshape(np.arange(self._ntiffs, dtype=int),
+                                   (self.nslices, self.nframes, self.nchannels)).transpose([2, 0, 1])
         self._img_dim = None
 
     def load_header(self):
         first_frame = self._stacks[0].pages[0]
-        hdr = [s.strip() for s in first_frame.tags['image_description'].value.decode('utf-8').split('\n')]
+        tag = first_frame.tags['software'] if 'software' in first_frame.tags else first_frame.tags['image_description']
+        hdr = [s.strip() for s in tag.value.decode('utf-8').split('\n')]
         self.scanimage_version, self.header = get_scanimage_version_and_header(hdr)
 
     @property
@@ -164,18 +168,17 @@ class TIFFReader:
         stack_idx = self._i2j[idx.ravel()]
 
         # that is used with logical indexing to put the images back in place
-        file_id = stack_idx[:,0].reshape(idx.shape)
+        file_id = stack_idx[:, 0].reshape(idx.shape)
 
-
-        for f in np.unique(stack_idx[:,0]): # in case we extract data from more than one stack file
-            file_frames = stack_idx[stack_idx[:,0] == f,1] # get frames for current file
+        for f in np.unique(stack_idx[:, 0]):  # in case we extract data from more than one stack file
+            file_frames = stack_idx[stack_idx[:, 0] == f, 1]  # get frames for current file
 
             # extract images and reshape back in order
             tmp = self._stacks[f].asarray(file_frames)
             if len(tmp.shape) == 2:
-                ret_val[...,file_id == f] = tmp[..., None]
+                ret_val[..., file_id == f] = tmp[..., None]
             else:
-                ret_val[...,file_id == f] = tmp.transpose([1,2,0])
+                ret_val[..., file_id == f] = tmp.transpose([1, 2, 0])
 
         # extract image dimensions if specified
-        return ret_val[img_slice + 3*(slice(None),)]
+        return ret_val[img_slice + 3 * (slice(None),)]

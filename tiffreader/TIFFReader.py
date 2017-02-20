@@ -6,7 +6,7 @@ import re
 import numpy as np
 from . import VersionNumberException
 
-si_verions = {
+si_versions = {
     4: re.compile("""^scanimage\.SI4\.(?P<attr>\w*)\s*=\s*(?P<value>.*\S)\s*$"""),
     5: re.compile("""^scanimage\.SI\.(?P<attr>[\.\w]*)\s*=\s*(?P<value>.*\S)\s*$"""),
     5.2: re.compile("""^SI\.(?P<attr>[\.\w]*)\s*=\s*(?P<value>.*\S)\s*$""")
@@ -15,7 +15,7 @@ si_verions = {
 
 def get_scanimage_version_and_header(hdr):
     o2p = Oct2Py()
-    for version, vregexp in si_verions.items():
+    for version, vregexp in si_versions.items():
         tmp = [vregexp.match(s) for s in hdr if vregexp.match(s) is not None]
         if len(tmp) > 0:
             print('Found scan image version', version)
@@ -43,12 +43,14 @@ class TIFFReader:
         self._ntiffs = sum(self._n)
         self.load_header()
         self._i2j = np.vstack([np.c_[i * np.ones(nn), np.arange(nn)] for i, nn in enumerate(self._n)]).astype(int)
+
         if not self.is_structural:
             self._idx = np.reshape(np.arange(self._ntiffs, dtype=int),
                                    (self.nframes, self.nslices, self.nchannels)).transpose()
         else:
             self._idx = np.reshape(np.arange(self._ntiffs, dtype=int),
                                    (self.nslices, self.nframes, self.nchannels)).transpose([2, 0, 1])
+
         self._img_dim = None
 
     def load_header(self):
@@ -59,8 +61,10 @@ class TIFFReader:
 
     @property
     def channels(self):
-        ret = self.header['channelsSave'] if self.scanimage_version == 4 else self.header['hChannels_channelSave']
-        return ret.squeeze()
+        """ Returns 1-d array with list of channels. """
+        res = self.header['channelsSave'] if self.scanimage_version == 4 else self.header['hChannels_channelsActive']
+        res = np.array([res]) if np.isscalar(res) else res.squeeze() # dealing with single channel
+        return res
 
     @property
     def nslices(self):

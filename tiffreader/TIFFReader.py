@@ -149,6 +149,9 @@ class TIFFReader:
             self._img_dim = self._stacks[0].asarray([0]).shape
         return self._img_dim + (self.nchannels, self.nslices, self.nframes)
 
+    def __array__(self):
+        return self[:,:,:,:,:]
+
     def __getitem__(self, item):
         for i in item:
             if i is Ellipsis:
